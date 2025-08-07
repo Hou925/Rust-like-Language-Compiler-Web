@@ -138,9 +138,6 @@ class CodeGen:
             # 参数
             elif op == 'PARAM':
                 pass  # 简化处理
-            # break/continue
-            # 其它
-            # ...可继续扩展...
         self.text_section.append('    mov eax, 1')
         self.text_section.append('    int 0x80')
         return '\n'.join(self.data_section + self.text_section)
