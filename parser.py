@@ -1,23 +1,30 @@
 from collections import namedtuple
+from tokenizer import Lexer
 
 Token = namedtuple("Token", ["type", "value", "pos"])
 
+
 class Parser:
-    def __init__(self, tokens):
-        self.tokens = [Token(**tok) for tok in tokens]
-        self.pos = 0
+    """
+    改为一遍扫描：语法分析驱动词法分析
+    - 使用 tokenizer.Lexer 按需取 token
+    - 保持原有语法与错误信息风格
+    """
+    def __init__(self, code: str):
+        self.lexer = Lexer(code)
+
+    def _to_token(self, tok_dict):
+        return Token(tok_dict['type'], tok_dict['value'], tok_dict['pos'])
 
     def peek(self, step=0):
-        idx = self.pos + step
-        if idx < len(self.tokens):
-            return self.tokens[idx]
-        return Token('EOF', '', len(self.tokens))
+        tok = self.lexer.peek(step)
+        return self._to_token(tok)
 
     def match(self, *token_types, values=None):
         tok = self.peek()
         if tok.type in token_types and (values is None or tok.value in values):
-            self.pos += 1
-            return tok
+            consumed = self._to_token(self.lexer.next_token())
+            return consumed
         return None
 
     def expect(self, *token_types, values=None):
@@ -78,7 +85,7 @@ class Parser:
         elif self.match('DELIM', values=['(']):
             inner = []
             if self.peek().type == 'DELIM' and self.peek().value == ')':
-                self.pos += 1
+                self.match('DELIM', values=[')'])
                 return {'tuple': []}
             while True:
                 inner.append(self.parse_type())
@@ -90,7 +97,8 @@ class Parser:
         else:
             idt = self.match('I32')
             if not idt:
-                raise SyntaxError(f"期望类型关键字i32，但遇到{self.peek().type}('{self.peek().value}')，在{self.peek().pos}处")
+                cur = self.peek()
+                raise SyntaxError(f"期望类型关键字i32，但遇到{cur.type}('{cur.value}')，在{cur.pos}处")
             return {'id': idt.value}
 
     def parse_func_body(self):
@@ -106,13 +114,14 @@ class Parser:
             if self.peek().type == 'DELIM' and self.peek().value == '}':
                 self.match('DELIM', values=['}'])
                 return {"type": "Block", "stmts": stmts}
-            save_pos = self.pos
+            mark = self.lexer.mark()
             try:
                 stmt = self.parse_stmt()
                 stmts.append(stmt)
                 continue
             except SyntaxError:
-                self.pos = save_pos
+                # 回溯后作为表达式处理
+                self.lexer.reset(mark)
                 expr = self.parse_expr()
                 if self.peek().type == 'DELIM' and self.peek().value == '}':
                     self.match('DELIM', values=['}'])
@@ -222,7 +231,7 @@ class Parser:
         return {"type": "Continue"}
 
     def parse_assign_or_expr_stmt(self):
-        save_pos = self.pos  # 保存当前位置
+        mark = self.lexer.mark()
         try:
             expr = self.parse_expr()
             if self.match('ASSIGN'):
@@ -233,8 +242,7 @@ class Parser:
                 self.expect('SEP', values=[';'])
                 return {"type": "ExprStmt", "expr": expr}
         except SyntaxError as e:
-            # 恢复位置并重新抛出错误，提供更明确的上下文
-            self.pos = save_pos
+            self.lexer.reset(mark)
             raise SyntaxError(f"解析表达式或赋值语句时出错: {e}")
 
     def parse_block_or_expr(self):
@@ -359,12 +367,12 @@ class Parser:
         elif tok.type == 'DELIM' and tok.value == '[':
             self.match('DELIM', values=['['])
             elems = []
-            
+
             # 处理空数组情况
             if self.peek().type == 'DELIM' and self.peek().value == ']':
                 self.match('DELIM', values=[']'])
                 return {'type': 'Array', 'elems': []}
-            
+
             # 处理非空数组
             try:
                 while True:
@@ -377,7 +385,7 @@ class Parser:
                         break
             except SyntaxError as e:
                 raise SyntaxError(f"解析数组元素时出错: {e}")
-            
+
             self.expect('DELIM', values=[']'])
             return {'type': 'Array', 'elems': elems}
         else:

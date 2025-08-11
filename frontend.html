@@ -57,10 +57,12 @@
         .toolbar {
             display: flex;
             gap: 10px;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
         }
 
-        .toolbar button {
+        .toolbar button,
+        .toolbar label.btn {
             background: #1976d2;
             border: none;
             color: white;
@@ -69,10 +71,22 @@
             border-radius: 5px;
             cursor: pointer;
             transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
         }
 
-        .toolbar button:hover {
+        .toolbar button:hover,
+        .toolbar label.btn:hover {
             background: #1253a3;
+        }
+
+        .toolbar .btn.secondary {
+            background: #455a64;
+        }
+
+        .toolbar .btn.secondary:hover {
+            background: #2d3b43;
         }
 
         .section-title {
@@ -251,7 +265,11 @@
 }</textarea>
         <div class="toolbar">
             <button onclick="runAnalysis()">分析</button>
+            <label class="btn secondary" for="file-input">从文件载入</label>
+            <input id="file-input" type="file" accept=".rs,.txt,.code,.rslang,.rlang,.rl,.any,*/*" style="display:none" />
             <button onclick="copyCode()">复制代码</button>
+            <button onclick="downloadIR()">下载 IR 文件</button>
+            <button onclick="downloadASM()">下载汇编文件</button>
         </div>
         <div class="section-title">词法分析结果</div>
         <pre id="lex"></pre>
@@ -537,11 +555,10 @@
                         document.getElementById("err").innerHTML = "";
                     } else {
                         document.getElementById("lex").innerHTML = renderTokens(data.tokens || []);
-                        // 关键：出错时在“语法分析可视化”栏显示错误
                         document.getElementById("ast").innerHTML = `<span style="color:#d32f2f;font-weight:bold;">${data.error}</span>`;
                         document.getElementById("ir-code").innerHTML = '';
                         document.getElementById("asm-code").innerHTML = '';
-                        document.getElementById("err").innerHTML = "";  // 不再在错误栏重复显示
+                        document.getElementById("err").innerHTML = "";
                     }
                     renderAstTreeByD3(data.ast); // 即使出错时 data.ast 可能为 undefined
                 })
@@ -554,6 +571,64 @@
                     document.getElementById("err").textContent = "分析失败: " + e;
                 });
         }
+
+        // 文件载入：读取本地文件并同步到文本框，然后自动分析
+        document.getElementById("file-input").addEventListener("change", function (evt) {
+            const file = evt.target.files && evt.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                document.getElementById("code").value = e.target.result;
+                runAnalysis();
+            };
+            reader.onerror = e => {
+                document.getElementById("err").textContent = "读取文件失败: " + e.toString();
+            };
+            reader.readAsText(file, "utf-8");
+            // 清空 input 的值，允许选择同一文件再次触发 change
+            evt.target.value = "";
+        });
+
+        // 下载文件通用函数
+        function downloadByEndpoint(endpoint, filename) {
+            const code = document.getElementById("code").value;
+            fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code })
+            }).then(async resp => {
+                if (!resp.ok) {
+                    const text = await resp.text();
+                    try {
+                        const data = JSON.parse(text);
+                        throw new Error(data.error || text);
+                    } catch (e) {
+                        throw new Error(text);
+                    }
+                }
+                return resp.blob();
+            }).then(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            }).catch(e => {
+                document.getElementById("err").textContent = "下载失败: " + e.message;
+            });
+        }
+
+        function downloadIR() {
+            downloadByEndpoint("/download_ir", "ir.txt");
+        }
+
+        function downloadASM() {
+            downloadByEndpoint("/download_asm", "out.asm");
+        }
+
         window.onload = runAnalysis;
     </script>
 </body>
