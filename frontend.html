@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>类Rust词法/语法分析可视化</title>
+    <title>类Rust语言编译器可视化</title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
         html {
@@ -256,20 +256,20 @@
 
 <body>
     <div class="container">
-        <h2>类Rust词法/语法分析可视化</h2>
+        <h2>类Rust语言编译器可视化</h2>
         <textarea id="code" rows="11" spellcheck="false">fn program_1_1() {
     let mut a:i32 = 1;
     if a > 0 {
-        return a+1;
+        return;
     }
 }</textarea>
         <div class="toolbar">
             <button onclick="runAnalysis()">分析</button>
-            <label class="btn secondary" for="file-input">从文件载入</label>
+            <label class="btn secondary" for="file-input">文件导入</label>
             <input id="file-input" type="file" accept=".rs,.txt,.code,.rslang,.rlang,.rl,.any,*/*" style="display:none" />
             <button onclick="copyCode()">复制代码</button>
-            <button onclick="downloadIR()">下载 IR 文件</button>
-            <button onclick="downloadASM()">下载汇编文件</button>
+            <button onclick="downloadIR()">下载中间代码</button>
+            <button onclick="downloadASM()">下载目标代码</button>
         </div>
         <div class="section-title">词法分析结果</div>
         <pre id="lex"></pre>
