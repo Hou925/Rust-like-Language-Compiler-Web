@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh">
+
+<head>
+    <meta charset="UTF-8">
+    <title>类Rust语言编译器可视化</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        html {
+            box-sizing: border-box;
+        }
+
+        *, *:before, *:after {
+            box-sizing: inherit;
+        }
+
+        body {
+            font-family: "Consolas", "JetBrains Mono", monospace;
+            margin: 0;
+            padding: 0;
+            background: #f7f8fa;
+            color: #252525;
+        }
+
+        .container {
+            max-width: 950px;
+            margin: 24px auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 12px #0001;
+            padding: 24px 18px 32px 18px;
+        }
+
+        h2 {
+            margin: 0 0 18px 0;
+            font-size: 1.5em;
+            letter-spacing: 1px;
+            color: #1976d2;
+            font-weight: 700;
+        }
+
+        textarea#code {
+            width: 100%;
+            min-height: 9em;
+            resize: vertical;
+            padding: 12px;
+            font-family: "Consolas", "JetBrains Mono", monospace;
+            font-size: 1em;
+            line-height: 1.5;
+            border: 1px solid #bbb;
+            border-radius: 7px;
+            background: #fafcff;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+
+        .toolbar button,
+        .toolbar label.btn {
+            background: #1976d2;
+            border: none;
+            color: white;
+            padding: 7px 18px;
+            font-size: 1em;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toolbar button:hover,
+        .toolbar label.btn:hover {
+            background: #1253a3;
+        }
+
+        .toolbar .btn.secondary {
+            background: #455a64;
+        }
+
+        .toolbar .btn.secondary:hover {
+            background: #2d3b43;
+        }
+
+        .section-title {
+            font-size: 1.1em;
+            margin: 18px 0 7px 0;
+            color: #444;
+        }
+
+        pre#lex {
+            background: #f4f7fa;
+            color: #252525;
+            padding: 15px;
+            border-radius: 7px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-size: 1em;
+            border: 1px solid #e6e6e6;
+        }
+
+        .token {
+            padding: 2px 0;
+            border-radius: 2px;
+            transition: background 0.1s;
+        }
+
+        .FN,
+        .LET,
+        .MUT,
+        .RETURN,
+        .IF,
+        .ELSE,
+        .WHILE,
+        .FOR,
+        .IN,
+        .LOOP,
+        .BREAK,
+        .CONTINUE,
+        .I32 {
+            color: #1976d2;
+            font-weight: bold;
+        }
+
+        .ID {
+            color: #43a047;
+        }
+
+        .NUMBER {
+            color: #e53935;
+        }
+
+        .OP,
+        .ASSIGN {
+            color: #fbc02d;
+        }
+
+        .DELIM,
+        .SEP,
+        .ARROW,
+        .DOT,
+        .DOTDOT {
+            color: #7b1fa2;
+        }
+
+        .COMMENT {
+            color: #a5a5a5;
+            font-style: italic;
+        }
+
+        #ast {
+            background: #f4f7fa;
+            border-radius: 7px;
+            padding: 13px;
+            margin-top: 3px;
+            font-size: 1em;
+            overflow-x: auto;
+            font-family: "JetBrains Mono", "Consolas", monospace;
+        }
+
+        .ast-node {
+            margin-left: 1em;
+            border-left: 2.5px solid #e3e3e3;
+            padding-left: 0.7em;
+            margin-bottom: 2px;
+            position: relative;
+        }
+
+        .ast-node > b {
+            color: #1976d2;
+            font-weight: 600;
+        }
+
+        .ast-key {
+            color: #888;
+        }
+
+        .ast-leaf {
+            color: #252525;
+            background: #f8f8ff;
+            padding: 1px 4px;
+            border-radius: 3px;
+            font-weight: 400;
+            margin-left: 2px;
+        }
+
+        #ast-tree {
+            background: #f8fafc;
+            border-radius: 7px;
+            border: 1px solid #e6e6e6;
+            padding: 8px;
+            margin-top: 5px;
+            min-height: 70px;
+            max-height: 600px;
+            overflow: auto;
+        }
+
+        /* 新增四元式IR区样式 */
+        #ir-code {
+            background: #f4f7fa;
+            border-radius: 7px;
+            padding: 13px;
+            margin-top: 3px;
+            font-size: 1em;
+            overflow-x: auto;
+            font-family: "JetBrains Mono", "Consolas", monospace;
+            border: 1px solid #e6e6e6;
+        }
+        #asm-code {
+            background: #f4f7fa;
+            border-radius: 7px;
+            padding: 13px;
+            margin-top: 3px;
+            font-size: 1em;
+            overflow-x: auto;
+            font-family: "JetBrains Mono", "Consolas", monospace;
+            border: 1px solid #e6e6e6;
+        }
+        .error {
+            color: #d32f2f;
+            padding: 10px 0 0 0;
+            line-height: 1.7;
+            word-break: break-all;
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 14px 2vw 30px 2vw;
+            }
+
+            h2 {
+                font-size: 1.1em;
+            }
+
+            #ast,
+            pre#lex,
+            #ir-code {
+                font-size: 0.97em;
+                padding: 8px 4px;
+            }
+            #ast-tree {
+                padding: 2px;
+                max-height: 340px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h2>类Rust语言编译器可视化</h2>
+        <textarea id="code" rows="11" spellcheck="false">fn program_1_1() {
+    let mut a:i32 = 1;
+    if a > 0 {
+        return;
+    }
+}</textarea>
+        <div class="toolbar">
+            <button onclick="runAnalysis()">分析</button>
+            <label class="btn secondary" for="file-input">文件导入</label>
+            <input id="file-input" type="file" accept=".rs,.txt,.code,.rslang,.rlang,.rl,.any,*/*" style="display:none" />
+            <button onclick="copyCode()">复制代码</button>
+            <button onclick="downloadIR()">下载中间代码</button>
+            <button onclick="downloadASM()">下载目标代码</button>
+        </div>
+        <div class="section-title">词法分析结果</div>
+        <pre id="lex"></pre>
+        <div class="section-title">语法分析可视化</div>
+        <div id="ast"></div>
+        <div class="section-title">语法树结构图（点击节点可折叠、展开）</div>
+        <div id="ast-tree" style="margin-bottom:16px;"></div>
+        <div class="section-title">四元式中间代码</div>
+        <pre id="ir-code"></pre>
+        <div class="section-title">目标代码（汇编）</div>
+        <pre id="asm-code"></pre>
+        <div id="err" class="error"></div>
+    </div>
+    <!-- D3.js from cdnjs (国内可访问) -->
+    <script src="https://cdn.staticfile.org/d3/7.8.5/d3.min.js"></script>
+    <script>
+        // 词法高亮
+        function renderTokens(tokens) {
+            return tokens.map(tok => {
+                let cls = tok.type;
+                let val = tok.value.replace(/</g, "<").replace(/>/g, ">").replace(/ /g, " ");
+                return `<span class="token ${cls}">${val}</span>`;
+            }).join(' ');
+        }
+
+        // AST可视化
+        function renderAST(node) {
+            if (typeof node !== "object" || node === null) {
+                return `<span class="ast-leaf">${JSON.stringify(node)}</span>`;
+            }
+            if (Array.isArray(node)) {
+                if (node.length === 0) return `<span class="ast-leaf">[]</span>`;
+                return node.map(child => renderAST(child)).join('');
+            }
+            let html = `<div class="ast-node"><b>${node.type || "Node"}</b>`;
+            for (let key in node) {
+                if (key === "type") continue;
+                html += `<div><span class="ast-key">${key}:</span> ${renderAST(node[key])}</div>`;
+            }
+            html += `</div>`;
+            return html;
+        }
+
+        // ======== AST Tree 可视化（D3.js，节点可折叠）========
+        function renderAstTreeByD3(ast) {
+            const container = document.getElementById("ast-tree");
+            container.innerHTML = '';
+
+            if (!ast) {
+                container.innerHTML = '<div style="color:#aaa;">未生成语法树。</div>';
+                return;
+            }
+
+            // AST 转 D3 Tree Data
+            function astToTree(node, keyName) {
+                if (typeof node !== "object" || node === null) {
+                    return { name: JSON.stringify(node), key: keyName, children: [] };
+                }
+                let label = node.type ? node.type : keyName || 'Node';
+                let children = [];
+                for (let k in node) {
+                    if (k === "type") continue;
+                    if (Array.isArray(node[k])) {
+                        for (let i = 0; i < node[k].length; ++i) {
+                            children.push(astToTree(node[k][i], k + `[${i}]`));
+                        }
+                    } else {
+                        children.push(astToTree(node[k], k));
+                    }
+                }
+                return { name: label, key: keyName, children: children.filter(c => c !== undefined) };
+            }
+
+            // D3布局参数
+            const nodeWidth = 110, nodeHeight = 48, vGap = 80, hGap = 20;
+
+            function update(source, root) {
+                function getTreeSize(node, depth = 0) {
+                    if (!node) return { maxBreadth: 1, maxDepth: depth };
+                    let arr = (node.children || node._children || []);
+                    if (arr.length === 0)
+                        return { maxBreadth: 1, maxDepth: depth };
+                    let total = 0, mDepth = depth;
+                    for (let c of arr) {
+                        let sz = getTreeSize(c, depth + 1);
+                        total += sz.maxBreadth;
+                        mDepth = Math.max(mDepth, sz.maxDepth);
+                    }
+                    return { maxBreadth: Math.max(total, 1), maxDepth: mDepth };
+                }
+                const sz = getTreeSize(root.data, 0);
+                const width = Math.max(sz.maxBreadth * (nodeWidth + hGap), 400);
+                const height = Math.max((sz.maxDepth + 2) * (nodeHeight + vGap), 320);
+
+                d3.select(container).selectAll("svg").remove();
+                const svg = d3.select(container)
+                    .append("svg")
+                    .attr("width", width)
+                    .attr("height", height);
+
+                const treeLayout = d3.tree().nodeSize([nodeWidth + hGap, nodeHeight + vGap]);
+                treeLayout(root);
+
+                let x0 = width / 2 - (root.x || 0);
+
+                svg.append("g")
+                    .selectAll("path")
+                    .data(root.links())
+                    .join("path")
+                    .attr("d", d_link => {
+                        return `M${d_link.source.x + x0},${d_link.source.y + nodeHeight / 2}
+                                V${d_link.target.y - nodeHeight / 2}
+                                H${d_link.target.x + x0}`;
+                    })
+                    .attr("stroke", "#bdbdbd")
+                    .attr("stroke-width", 2)
+                    .attr("fill", "none");
+
+                const g = svg.append("g")
+                    .selectAll("g")
+                    .data(root.descendants())
+                    .join("g")
+                    .attr("class", "node-group")
+                    .attr("transform", d_node => `translate(${d_node.x + x0},${d_node.y})`)
+                    .style("cursor", d_node => ((d_node.children && d_node.children.length) || (d_node._children && d_node._children.length)) ? "pointer" : "default")
+                    .on("click", function (event, d_clicked) {
+                        if (d_clicked.children && d_clicked.children.length) {
+                            d_clicked._children = d_clicked.children;
+                            d_clicked.children = null;
+                        } else if (d_clicked._children && d_clicked._children.length) {
+                            d_clicked.children = d_clicked._children;
+                            d_clicked._children = null;
+                        }
+                        update(d_clicked, root);
+                    })
+                    .on("mouseover", function(event, d_hovered) {
+                        const descendantsAndSelf = d_hovered.descendants();
+                        svg.selectAll("g.node-group")
+                            .filter(node_datum => descendantsAndSelf.includes(node_datum))
+                            .select("rect")
+                            .transition().duration(150)
+                            .attr("fill", "#e0f7fa")
+                            .attr("stroke", "#00796b");
+                    })
+                    .on("mouseout", function(event, d_hovered) {
+                        const descendantsAndSelf = d_hovered.descendants();
+                        svg.selectAll("g.node-group")
+                            .filter(node_datum => descendantsAndSelf.includes(node_datum))
+                            .select("rect")
+                            .transition().duration(150)
+                            .attr("fill", "#fff")
+                            .attr("stroke", "#1976d2");
+                    });
+
+                g.append("rect")
+                    .attr("x", -nodeWidth / 2)
+                    .attr("y", -nodeHeight / 2)
+                    .attr("width", nodeWidth)
+                    .attr("height", nodeHeight)
+                    .attr("rx", 10)
+                    .attr("fill", "#fff")
+                    .attr("stroke", "#1976d2")
+                    .attr("stroke-width", 2);
+
+                g.append("text")
+                    .attr("text-anchor", "middle")
+                    .attr("y", -4)
+                    .attr("fill", "#1976d2")
+                    .attr("font-size", 15)
+                    .attr("font-weight", "bold")
+                    .text(d_node => d_node.data.name);
+
+                g.append("text")
+                    .filter(d_node => d_node.data.key && d_node.parent)
+                    .attr("text-anchor", "middle")
+                    .attr("y", 16)
+                    .attr("fill", "#888")
+                    .attr("font-size", 11)
+                    .text(d_node => d_node.data.key);
+
+                g.append("text")
+                    .filter(d_node => ((d_node.children && d_node.children.length) || (d_node._children && d_node._children.length)))
+                    .attr("text-anchor", "end")
+                    .attr("x", nodeWidth / 2 - 10)
+                    .attr("y", -nodeHeight / 2 + 16)
+                    .attr("fill", "#ccc")
+                    .attr("font-size", 18)
+                    .attr("font-family", "monospace")
+                    .text(d_node => d_node.children && d_node.children.length ? "−" : "+");
+
+                g.append("title")
+                    .text(d_node => d_node.data.key ? d_node.data.key : d_node.data.name);
+            }
+
+            const treeData = astToTree(ast, '');
+            const root = d3.hierarchy(treeData);
+
+            expandAll(root);
+
+            update(root, root);
+        }
+
+        function expandAll(d) {
+            if (d._children) {
+                d.children = d._children;
+                d._children = null;
+            }
+            if (d.children) d.children.forEach(expandAll);
+        }
+
+        // 四元式渲染
+        function renderIR(ir) {
+            if (!ir || ir.length === 0) return '（无中间代码）';
+            return ir.map((q, i) => {
+                // 用 _ 替换空字符串
+                let op = q.op === '' ? '_' : q.op;
+                let arg1 = q.arg1 === '' ? '_' : q.arg1;
+                let arg2 = q.arg2 === '' ? '_' : q.arg2;
+                let res = q.res === '' ? '_' : q.res;
+                let quad = `[${i}] (${op}, ${arg1}, ${arg2}, ${res})`;
+                return quad;
+            }).join('\n');
+        }
+
+        // 错误定位
+        function showErrorWithPos(code, errorMsg) {
+            let m = /第(\d+)字符/.exec(errorMsg);
+            if (m) {
+                let pos = parseInt(m[1]);
+                let context = 10;
+                let start = Math.max(0, pos - context);
+                let end = Math.min(code.length, pos + context);
+                let prefix = code.slice(start, pos);
+                let mark = code.slice(pos, pos + 1) || '';
+                let suffix = code.slice(pos + 1, end);
+                let html = [
+                    '<div><b>错误位置上下文：</b></div>',
+                    '<pre style="background:#fee;overflow-x:auto;">',
+                    prefix.replace(/</g, "<").replace(/>/g, ">") +
+                    '<span style="background:yellow;color:red">' +
+                    mark.replace(/</g, "<").replace(/>/g, ">") +
+                    '</span>' +
+                    suffix.replace(/</g, "<").replace(/>/g, ">") +
+                    '</pre>'
+                ].join('');
+                return errorMsg + html;
+            }
+            return errorMsg;
+        }
+
+        // 复制代码
+        function copyCode() {
+            let textarea = document.getElementById("code");
+            textarea.select();
+            document.execCommand('copy');
+            textarea.blur();
+            let btn = document.querySelector('.toolbar button[onclick="copyCode()"]');
+            btn.textContent = "已复制!";
+            setTimeout(() => btn.textContent = "复制代码", 1000);
+        }
+
+        // 分析
+        function runAnalysis() {
+            document.getElementById("err").textContent = '';
+            document.getElementById("lex").innerHTML = "分析中…";
+            document.getElementById("ast").innerHTML = "";
+            document.getElementById("ast-tree").innerHTML = "";
+            document.getElementById("ir-code").innerHTML = "";
+            document.getElementById("asm-code").innerHTML = "";
+            let code = document.getElementById("code").value;
+            fetch("/analyze", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code })
+            })
+                .then(resp => resp.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById("lex").innerHTML = renderTokens(data.tokens);
+                        document.getElementById("ast").innerHTML = renderAST(data.ast);
+                        document.getElementById("ir-code").innerHTML = renderIR(data.ir);
+                        document.getElementById("asm-code").innerHTML = data.asm || '无汇编代码';
+                        document.getElementById("err").innerHTML = "";
+                    } else {
+                        document.getElementById("lex").innerHTML = renderTokens(data.tokens || []);
+                        document.getElementById("ast").innerHTML = `<span style="color:#d32f2f;font-weight:bold;">${data.error}</span>`;
+                        document.getElementById("ir-code").innerHTML = '';
+                        document.getElementById("asm-code").innerHTML = '';
+                        document.getElementById("err").innerHTML = "";
+                    }
+                    renderAstTreeByD3(data.ast); // 即使出错时 data.ast 可能为 undefined
+                })
+                .catch(e => {
+                    document.getElementById("lex").innerHTML = "";
+                    document.getElementById("ast").innerHTML = "";
+                    document.getElementById("ast-tree").innerHTML = "";
+                    document.getElementById("ir-code").innerHTML = "";
+                    document.getElementById("asm-code").innerHTML = "";
+                    document.getElementById("err").textContent = "分析失败: " + e;
+                });
+        }
+
+        // 文件载入：读取本地文件并同步到文本框，然后自动分析
+        document.getElementById("file-input").addEventListener("change", function (evt) {
+            const file = evt.target.files && evt.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = e => {
+                document.getElementById("code").value = e.target.result;
+                runAnalysis();
+            };
+            reader.onerror = e => {
+                document.getElementById("err").textContent = "读取文件失败: " + e.toString();
+            };
+            reader.readAsText(file, "utf-8");
+            // 清空 input 的值，允许选择同一文件再次触发 change
+            evt.target.value = "";
+        });
+
+        // 下载文件通用函数
+        function downloadByEndpoint(endpoint, filename) {
+            const code = document.getElementById("code").value;
+            fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ code })
+            }).then(async resp => {
+                if (!resp.ok) {
+                    const text = await resp.text();
+                    try {
+                        const data = JSON.parse(text);
+                        throw new Error(data.error || text);
+                    } catch (e) {
+                        throw new Error(text);
+                    }
+                }
+                return resp.blob();
+            }).then(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+            }).catch(e => {
+                document.getElementById("err").textContent = "下载失败: " + e.message;
+            });
+        }
+
+        function downloadIR() {
+            downloadByEndpoint("/download_ir", "ir.txt");
+        }
+
+        function downloadASM() {
+            downloadByEndpoint("/download_asm", "out.asm");
+        }
+
+        window.onload = runAnalysis;
+    </script>
+</body>
+
+</html>
